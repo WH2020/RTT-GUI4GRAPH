@@ -6,7 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6.QtWidgets import QApplication
 
 from rtt_gui4graph.core.channels import ChannelRegistry
-from rtt_gui4graph.core.records import Sample
+from rtt_gui4graph.core.records import Event, Sample
 from rtt_gui4graph.ui.plot_widget import PlotWidget
 
 
@@ -41,6 +41,21 @@ class PlotWidgetTest(unittest.TestCase):
         x_data, y_data = widget._curves["TAP.wr_dps"].getData()
         self.assertEqual(x_data.tolist(), [6.0, 7.0, 8.0, 9.0, 10.0])
         self.assertEqual(y_data.tolist(), [95.0, 96.0, 97.0, 98.0, 99.0])
+
+    def test_enum_channels_are_plotted_in_status_lane(self):
+        registry = ChannelRegistry()
+        registry.ingest(Event("TAP.state", 1.0, "IDLE", 0, ""))
+        registry.ingest(Event("TAP.state", 2.0, "RUN", 1, ""))
+        registry.set_enabled("TAP.state", True)
+
+        widget = PlotWidget()
+        widget.refresh(registry)
+
+        self.assertNotIn("TAP.state", widget._curves)
+        self.assertIn("TAP.state", widget._status_curves)
+        x_data, y_data = widget._status_curves["TAP.state"].getData()
+        self.assertEqual(x_data.tolist(), [0.0, 1.0])
+        self.assertEqual(y_data.tolist(), [0.0, 1.0])
 
 
 if __name__ == "__main__":

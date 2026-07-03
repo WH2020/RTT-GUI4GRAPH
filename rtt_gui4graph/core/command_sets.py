@@ -8,9 +8,20 @@ from typing import Any
 
 
 @dataclass
+class CommandParam:
+    name: str
+    param_type: str = "str"
+    default: str | int | float | bool = ""
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+@dataclass
 class CommandItem:
     name: str
     command: str
+    encoding: str = "text"
+    params: list[CommandParam] = field(default_factory=list)
 
 
 @dataclass
@@ -52,7 +63,21 @@ class CommandSetStore:
                 {
                     "name": section.name,
                     "commands": [
-                        {"name": command.name, "command": command.command}
+                        {
+                            "name": command.name,
+                            "command": command.command,
+                            "encoding": command.encoding,
+                            "params": [
+                                {
+                                    "name": param.name,
+                                    "type": param.param_type,
+                                    "default": param.default,
+                                    "min": param.minimum,
+                                    "max": param.maximum,
+                                }
+                                for param in command.params
+                            ],
+                        }
                         for command in section.commands
                     ],
                 }
@@ -85,10 +110,36 @@ class CommandSetStore:
                         continue
                     command_name = str(raw_command.get("name", "")).strip()
                     command_text = str(raw_command.get("command", ""))
+                    encoding = str(raw_command.get("encoding", "text") or "text")
+                    params = self._decode_params(raw_command.get("params", []))
                     if command_name and command_text:
-                        commands.append(CommandItem(command_name, command_text))
+                        commands.append(
+                            CommandItem(command_name, command_text, encoding, params)
+                        )
             sections.append(CommandSection(name, commands))
         return normalize_command_sections(sections)
+
+    @staticmethod
+    def _decode_params(raw_params: Any) -> list[CommandParam]:
+        if not isinstance(raw_params, list):
+            return []
+        params: list[CommandParam] = []
+        for raw_param in raw_params:
+            if not isinstance(raw_param, dict):
+                continue
+            name = str(raw_param.get("name", "")).strip()
+            if not name:
+                continue
+            params.append(
+                CommandParam(
+                    name=name,
+                    param_type=str(raw_param.get("type", "str") or "str"),
+                    default=raw_param.get("default", ""),
+                    minimum=raw_param.get("min"),
+                    maximum=raw_param.get("max"),
+                )
+            )
+        return params
 
 
 def normalize_command_sections(sections: list[CommandSection]) -> list[CommandSection]:
@@ -98,9 +149,28 @@ def normalize_command_sections(sections: list[CommandSection]) -> list[CommandSe
         if not name:
             continue
         commands = [
-            CommandItem(command.name.strip(), command.command)
+            CommandItem(
+                command.name.strip(),
+                command.command,
+                command.encoding if command.encoding in {"text", "hex"} else "text",
+                list(command.params),
+            )
             for command in section.commands
             if command.name.strip() and command.command
         ]
         normalized.append(CommandSection(name, commands))
     return normalized or default_command_sections()
+
+
+def render_command(
+    command: CommandItem,
+    values: dict[str, object],
+    line_ending: bytes = b"\n",
+) -> bytes:
+    rendered = command.command
+    for param in command.params:
+        value = values.get(param.name, param.default)
+        rendered = rendered.replace("{" + param.name + "}", str(value))
+    if command.encoding == "hex":
+        return bytes.fromhex("".join(rendered.split()))
+    return rendered.encode("utf-8") + line_ending

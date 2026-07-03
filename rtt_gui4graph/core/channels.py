@@ -19,6 +19,12 @@ class Channel:
     kind: ChannelKind
     capacity: int
     enabled: bool = False
+    display_name: str = ""
+    unit: str = ""
+    scale: float = 1.0
+    offset: float = 0.0
+    color: str = ""
+    target: str = ""
     latest_value: float | str | None = None
     latest_time: float | None = None
     _times: np.ndarray = field(init=False, repr=False)
@@ -29,6 +35,10 @@ class Channel:
     def __post_init__(self) -> None:
         self._times = np.empty(self.capacity, dtype=float)
         self._values = np.empty(self.capacity, dtype=float)
+        if not self.display_name:
+            self.display_name = self.key
+        if not self.target:
+            self.target = "status" if self.kind == ChannelKind.ENUM else "main"
 
     def append(self, t: float, value: float, latest_value: float | str) -> None:
         if self._count < self.capacity:
@@ -62,11 +72,50 @@ class Channel:
             indexes = indexes[-max_points:]
         return self._times[indexes].copy(), self._values[indexes].copy()
 
+    def display_series_arrays(
+        self,
+        start_time: float | None = None,
+        max_points: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        times, values = self.series_arrays(start_time, max_points)
+        if self.kind == ChannelKind.NUMERIC:
+            values = values * self.scale + self.offset
+        return times, values
+
     @property
     def earliest_time(self) -> float | None:
         if self._count == 0:
             return None
         return float(self._times[self._start])
+
+    def apply_config(self, config: dict) -> None:
+        if "display_name" in config:
+            self.display_name = str(config["display_name"] or self.key)
+        if "unit" in config:
+            self.unit = str(config["unit"] or "")
+        if "scale" in config:
+            self.scale = float(config["scale"])
+        if "offset" in config:
+            self.offset = float(config["offset"])
+        if "color" in config:
+            self.color = str(config["color"] or "")
+        if "target" in config:
+            target = str(config["target"] or self.target)
+            if target in {"main", "status"}:
+                self.target = target
+        if "enabled" in config:
+            self.enabled = bool(config["enabled"])
+
+    def to_config(self) -> dict:
+        return {
+            "display_name": self.display_name,
+            "unit": self.unit,
+            "scale": self.scale,
+            "offset": self.offset,
+            "color": self.color,
+            "target": self.target,
+            "enabled": self.enabled,
+        }
 
 
 class ChannelRegistry:
@@ -102,6 +151,17 @@ class ChannelRegistry:
 
     def set_enabled(self, key: str, enabled: bool) -> None:
         self._channels[key].enabled = enabled
+
+    def set_channel_config(self, key: str, **config) -> None:
+        self._channels[key].apply_config(config)
+
+    def channel_configs(self) -> dict[str, dict]:
+        return {key: channel.to_config() for key, channel in self._channels.items()}
+
+    def apply_channel_configs(self, configs: dict[str, dict]) -> None:
+        for key, config in configs.items():
+            if key in self._channels:
+                self._channels[key].apply_config(config)
 
     def _ensure(self, key: str, kind: ChannelKind) -> Channel:
         channel = self._channels.get(key)

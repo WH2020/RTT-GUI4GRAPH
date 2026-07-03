@@ -23,6 +23,13 @@ class ChannelPanel(QWidget):
     def refresh(self, registry: ChannelRegistry) -> None:
         self._updating = True
         try:
+            current_keys = {channel.key for channel in registry.channels()}
+            for key in list(self._items):
+                if key in current_keys:
+                    continue
+                item = self._items.pop(key)
+                row = self._list.row(item)
+                self._list.takeItem(row)
             for channel in registry.channels():
                 item = self._items.get(channel.key)
                 if item is None:

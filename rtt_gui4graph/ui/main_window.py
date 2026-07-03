@@ -4,6 +4,7 @@ from PySide6.QtCore import QThread, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDockWidget,
+    QFileDialog,
     QLabel,
     QMainWindow,
     QPushButton,
@@ -11,14 +12,20 @@ from PySide6.QtWidgets import (
 )
 
 from rtt_gui4graph.core.channels import ChannelRegistry
+from rtt_gui4graph.core.csv_export import export_channels_csv
 from rtt_gui4graph.core.link_base import LINKS, LinkState, create_link
 from rtt_gui4graph.core.links import JLinkRttLink  # noqa: F401
+from rtt_gui4graph.core.markers import MarkerStore
 from rtt_gui4graph.core.parsers.kv_line import KvLineParser
 from rtt_gui4graph.core.reader import BatchQueue, ReaderWorker
+from rtt_gui4graph.core.recorder import load_rttcap, save_rttcap
 from rtt_gui4graph.core.records import Event, LogLine, ParseIssue, Sample
+from rtt_gui4graph.core.session import SessionPreset, SessionStore
+from rtt_gui4graph.ui.channel_model_editor import ChannelModelEditor
 from rtt_gui4graph.ui.channel_panel import ChannelPanel
 from rtt_gui4graph.ui.connect_dialog import ConnectDialog, default_config_from_fields
 from rtt_gui4graph.ui.log_view import LogView
+from rtt_gui4graph.ui.marker_panel import MarkerPanel
 from rtt_gui4graph.ui.plot_widget import PlotWidget
 from rtt_gui4graph.ui.send_panel import SendPanel
 
@@ -36,9 +43,14 @@ class MainWindow(QMainWindow):
         self._thread: QThread | None = None
         self._worker: ReaderWorker | None = None
         self._last_configs: dict[str, dict] = {}
+        self._markers = MarkerStore()
 
         self._plot = PlotWidget()
+        self._plot.set_markers(self._markers)
         self._channels = ChannelPanel()
+        self._channel_editor = ChannelModelEditor()
+        self._marker_panel = MarkerPanel()
+        self._marker_panel.refresh(self._markers)
         self._logs = LogView()
         self._send_panel = SendPanel()
         self._status = QLabel("disconnected")
@@ -66,13 +78,32 @@ class MainWindow(QMainWindow):
             self._transport.addItem(name)
         self._connect = QPushButton("Connect")
         self._disconnect = QPushButton("Disconnect")
+        self._mark = QPushButton("Mark")
+        self._save_capture = QPushButton("Save Cap")
+        self._open_capture = QPushButton("Open Cap")
+        self._export_csv = QPushButton("CSV")
+        self._save_session = QPushButton("Save Session")
+        self._load_session = QPushButton("Load Session")
         self._disconnect.setEnabled(False)
         self._connect.clicked.connect(lambda: self.connect_link(prompt=True))
         self._disconnect.clicked.connect(self.disconnect_link)
+        self._mark.clicked.connect(self.add_marker)
+        self._save_capture.clicked.connect(self.save_capture)
+        self._open_capture.clicked.connect(self.open_capture)
+        self._export_csv.clicked.connect(self.export_csv)
+        self._save_session.clicked.connect(self.save_session)
+        self._load_session.clicked.connect(self.load_session)
 
         toolbar.addWidget(self._transport)
         toolbar.addWidget(self._connect)
         toolbar.addWidget(self._disconnect)
+        toolbar.addSeparator()
+        toolbar.addWidget(self._mark)
+        toolbar.addWidget(self._save_capture)
+        toolbar.addWidget(self._open_capture)
+        toolbar.addWidget(self._export_csv)
+        toolbar.addWidget(self._save_session)
+        toolbar.addWidget(self._load_session)
         toolbar.addSeparator()
         toolbar.addWidget(self._status)
         toolbar.addSeparator()
@@ -82,6 +113,14 @@ class MainWindow(QMainWindow):
         channel_dock = QDockWidget("Channels", self)
         channel_dock.setWidget(self._channels)
         self.addDockWidget(QtDock.Right, channel_dock)
+
+        channel_model_dock = QDockWidget("Channel Model", self)
+        channel_model_dock.setWidget(self._channel_editor)
+        self.addDockWidget(QtDock.Right, channel_model_dock)
+
+        marker_dock = QDockWidget("Markers", self)
+        marker_dock.setWidget(self._marker_panel)
+        self.addDockWidget(QtDock.Right, marker_dock)
 
         log_dock = QDockWidget("Logs", self)
         log_dock.setWidget(self._logs)
@@ -106,6 +145,9 @@ class MainWindow(QMainWindow):
             self._last_configs[name] = config
         link = create_link(name)
         self._registry = ChannelRegistry()
+        self._markers = MarkerStore()
+        self._plot.set_markers(self._markers)
+        self._marker_panel.refresh(self._markers)
         self._batches = BatchQueue()
         self._thread = QThread(self)
         self._worker = ReaderWorker(link, KvLineParser(), self._batches, config)
@@ -160,11 +202,109 @@ class MainWindow(QMainWindow):
         self._logs.append_logs(logs)
         self._logs.append_issues(issues)
         self._channels.refresh(self._registry)
+        self._channel_editor.refresh(self._registry)
         self._plot.refresh(self._registry)
 
     def _set_channel_enabled(self, key: str, enabled: bool) -> None:
         self._registry.set_enabled(key, enabled)
+        self._channel_editor.refresh(self._registry)
         self._plot.refresh(self._registry)
+
+    def add_marker(self) -> None:
+        t = max(
+            (channel.latest_time for channel in self._registry.channels() if channel.latest_time is not None),
+            default=0.0,
+        )
+        self._markers.add(t, f"marker {len(self._markers.markers()) + 1}", "")
+        self._marker_panel.refresh(self._markers)
+        self._plot.refresh(self._registry)
+
+    def save_capture(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Capture",
+            "capture.rttcap",
+            "RTT Capture (*.rttcap)",
+        )
+        if not path:
+            return
+        save_rttcap(
+            path,
+            self._registry,
+            self._markers,
+            {"transport": self._transport.currentText()},
+            self._logs._logs.toPlainText(),
+        )
+        self._status.setText(f"saved: {path}")
+
+    def open_capture(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Capture",
+            "",
+            "RTT Capture (*.rttcap)",
+        )
+        if not path:
+            return
+        replay = load_rttcap(path)
+        self._registry = replay.registry
+        self._markers = replay.markers
+        self._plot.set_markers(self._markers)
+        self._marker_panel.refresh(self._markers)
+        self._channels.refresh(self._registry)
+        self._channel_editor.refresh(self._registry)
+        self._plot.refresh(self._registry)
+        self._status.setText(f"opened: {path}")
+
+    def export_csv(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export CSV",
+            "channels.csv",
+            "CSV (*.csv)",
+        )
+        if not path:
+            return
+        export_channels_csv(path, self._registry)
+        self._status.setText(f"csv: {path}")
+
+    def save_session(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Save Session",
+            "session.json",
+            "Session (*.json)",
+        )
+        if not path:
+            return
+        SessionStore(path).save(
+            SessionPreset(
+                transport=self._transport.currentText(),
+                link_configs=self._last_configs,
+                channel_configs=self._registry.channel_configs(),
+            )
+        )
+        self._status.setText(f"session saved: {path}")
+
+    def load_session(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load Session",
+            "",
+            "Session (*.json)",
+        )
+        if not path:
+            return
+        preset = SessionStore(path).load()
+        self._last_configs = preset.link_configs
+        index = self._transport.findText(preset.transport)
+        if index >= 0:
+            self._transport.setCurrentIndex(index)
+        self._registry.apply_channel_configs(preset.channel_configs)
+        self._channels.refresh(self._registry)
+        self._channel_editor.refresh(self._registry)
+        self._plot.refresh(self._registry)
+        self._status.setText(f"session loaded: {path}")
 
     def _send_bytes(self, data: bytes) -> None:
         if self._worker is None:
