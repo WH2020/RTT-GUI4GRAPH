@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QPlainTextEdit, QTabWidget, QVBoxLayout, QWidget
+from PySide6.QtGui import QTextCursor
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QHBoxLayout,
+    QPlainTextEdit,
+    QPushButton,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 
 from rtt_gui4graph.core.records import LogLine, ParseIssue
 
@@ -14,20 +23,52 @@ class LogView(QWidget):
         self._issues = QPlainTextEdit()
         self._issues.setReadOnly(True)
         self._issues.document().setMaximumBlockCount(2000)
+        self._clear_button = QPushButton("Clear")
+        self._clear_button.setToolTip("Clear the current log tab")
+        self._clear_button.clicked.connect(self._clear_current_tab)
+        self._auto_scroll = QCheckBox("Auto-scroll")
+        self._auto_scroll.setToolTip("Scroll to the newest entry as logs arrive")
+        self._auto_scroll.setChecked(True)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._logs, "Log")
-        tabs.addTab(self._issues, "Parse Issues")
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(6, 6, 6, 0)
+        toolbar.addWidget(self._clear_button)
+        toolbar.addWidget(self._auto_scroll)
+        toolbar.addStretch(1)
+
+        self._tabs = QTabWidget()
+        self._tabs.addTab(self._logs, "Log")
+        self._tabs.addTab(self._issues, "Parse Issues")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(tabs)
+        layout.addLayout(toolbar)
+        layout.addWidget(self._tabs)
 
     def append_log(self, record: LogLine) -> None:
-        self._logs.appendPlainText(f"{record.t:10.3f} T{record.terminal}: {record.text}")
+        self._append_text(
+            self._logs,
+            f"{record.t:10.3f} T{record.terminal}: {record.text}",
+        )
 
     def append_issue(self, issue: ParseIssue) -> None:
         key = issue.key or "-"
-        self._issues.appendPlainText(
-            f"{issue.t:10.3f} {issue.severity} {issue.reason} {key}: {issue.sample_text}"
+        self._append_text(
+            self._issues,
+            f"{issue.t:10.3f} {issue.severity} {issue.reason} {key}: {issue.sample_text}",
         )
+
+    def _append_text(self, editor: QPlainTextEdit, text: str) -> None:
+        scrollbar = editor.verticalScrollBar()
+        previous_value = scrollbar.value()
+        editor.appendPlainText(text)
+        if self._auto_scroll.isChecked():
+            editor.moveCursor(QTextCursor.End)
+            scrollbar.setValue(scrollbar.maximum())
+        else:
+            scrollbar.setValue(previous_value)
+
+    def _clear_current_tab(self) -> None:
+        current = self._tabs.currentWidget()
+        if isinstance(current, QPlainTextEdit):
+            current.clear()
