@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the first runnable RTT GUI4GRAPH MVP with mock/J-Link links, raw send, line assembly, key-value parsing, channel discovery, and real-time plotting.
+**Goal:** Build the first runnable RTT GUI4GRAPH MVP with J-Link RTT, raw send, line assembly, key-value parsing, channel discovery, and real-time plotting.
 
-**Architecture:** Pure core modules handle parsing, records, bounded buffers, and tests. Qt-aware link and UI modules provide a threaded reader, channel/log/send panels, and pyqtgraph rendering. The mock path is fully usable without hardware; J-Link imports `pylink` only when opened.
+**Architecture:** Pure core modules handle parsing, records, bounded buffers, and tests. Qt-aware link and UI modules provide a threaded reader, channel/log/send panels, and pyqtgraph rendering. J-Link imports `pylink` only when opened, while core tests run without hardware.
 
 **Tech Stack:** Python 3.10+, PySide6, pyqtgraph, numpy, pytest, optional pylink-square.
 
@@ -13,14 +13,13 @@
 ## File Structure
 
 - `rtt_gui4graph/__init__.py`: package marker and version.
-- `rtt_gui4graph/app.py`: QApplication entry point and `--mock` handling.
+- `rtt_gui4graph/app.py`: QApplication entry point.
 - `rtt_gui4graph/core/records.py`: dataclasses and parser enums.
 - `rtt_gui4graph/core/line_assembler.py`: byte stream to timestamped lines.
 - `rtt_gui4graph/core/parser_base.py`: parser registry and abstract interface.
 - `rtt_gui4graph/core/parsers/kv_line.py`: key-value parser.
 - `rtt_gui4graph/core/channels.py`: bounded channel buffers and registry.
 - `rtt_gui4graph/core/link_base.py`: Qt link base, field schema, link registry.
-- `rtt_gui4graph/core/links/mock.py`: mock RTT-like source.
 - `rtt_gui4graph/core/links/jlink_rtt.py`: optional pylink transport.
 - `rtt_gui4graph/core/reader.py`: QThread worker, parse batches, send queue.
 - `rtt_gui4graph/ui/main_window.py`: application shell and timer drain.
@@ -197,7 +196,6 @@ Expected: PASS.
 
 **Files:**
 - Create: `rtt_gui4graph/core/link_base.py`
-- Create: `rtt_gui4graph/core/links/mock.py`
 - Create: `rtt_gui4graph/core/links/jlink_rtt.py`
 - Create: `rtt_gui4graph/core/reader.py`
 - Test: `tests/test_reader_queue.py`
@@ -230,7 +228,7 @@ Expected: FAIL because `BatchQueue` does not exist.
 
 - [ ] **Step 3: Implement link base and reader queue**
 
-Create Qt link interfaces, mock data generator, optional J-Link transport, `BatchQueue`, and `ReaderWorker`.
+Create Qt link interfaces, J-Link transport, `BatchQueue`, and `ReaderWorker`.
 
 - [ ] **Step 4: Run tests**
 
@@ -254,8 +252,8 @@ Build a `QMainWindow` with toolbar controls, pyqtgraph plot, channel dock, log d
 
 - [ ] **Step 2: Run no-hardware startup**
 
-Run: `python -m rtt_gui4graph.app --mock`
-Expected: GUI opens, mock data flows, channels appear, logs scroll, enabled channels plot.
+Run: `python -m rtt_gui4graph.app`
+Expected: GUI opens and shows the J-Link RTT connection workflow.
 
 ## Task 6: Final Verification
 

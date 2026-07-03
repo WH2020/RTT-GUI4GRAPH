@@ -2,16 +2,16 @@
 
 ## Goal
 
-Build the first runnable RTT GUI4GRAPH MVP: a PySide6 desktop app that can read an RTT-like byte stream from a mock source or J-Link, assemble text lines, parse `key=value` records into channels, show logs, allow raw command sending, and plot user-selected channels in real time.
+Build the first runnable RTT GUI4GRAPH MVP: a PySide6 desktop app that can read a J-Link RTT byte stream, assemble text lines, parse `key=value` records into channels, show logs, allow raw command sending, and plot user-selected channels in real time.
 
 ## Scope
 
 Included:
 
-- M1: link registry, `MockLink`, `JLinkRttLink`, log view, raw send panel.
+- M1: link registry, `JLinkRttLink`, log view, raw send panel.
 - M2: `LineAssembler`, `KvLineParser`, `ChannelRegistry`, channel discovery, manual plot enable, real-time pyqtgraph plot.
 - Parser tests for framing, value grammar, duplicate keys, non-UTF-8, type conflicts, enum overflow, and queue overflow counters.
-- `python -m rtt_gui4graph.app --mock` as the no-hardware acceptance path.
+- No simulated data transport is included; validation uses unit tests and real J-Link hardware.
 
 Deferred:
 
@@ -37,7 +37,7 @@ LinkBase bytes
   -> ChannelRegistry + LogView + ChannelPanel + PlotWidget
 ```
 
-`MockLink` is the default development and demo transport. `JLinkRttLink` is implemented as an optional transport that imports `pylink` only when used, so the mock path remains runnable on machines without SEGGER/J-Link installed.
+`JLinkRttLink` imports `pylink` only when used, so core parser and channel tests remain runnable on machines without SEGGER/J-Link installed.
 
 ## Core Contracts
 
@@ -92,10 +92,10 @@ Failures are reported through link state and do not crash the app.
 Core acceptance:
 
 - `pytest` passes parser and channel tests.
-- `python -m rtt_gui4graph.app --mock` starts without hardware.
-- mock stream discovers channels including `TAP.wr_dps`, `TAP.wy_dps`, `TAP.state`, and `TAP.align`.
+- `python -m rtt_gui4graph.app` starts the GUI and exposes the J-Link RTT connection form.
+- a real RTT stream discovers channels including `TAP.wr_dps`, `TAP.wy_dps`, `TAP.state`, and `TAP.align`.
 - enabling a numeric channel draws a live curve.
-- raw text send and hex send both reach the active link path; mock mode logs outgoing bytes.
+- raw text send and hex send both reach the active J-Link link path.
 
 ## Constraints
 

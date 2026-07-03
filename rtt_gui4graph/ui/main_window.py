@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
 
 from rtt_gui4graph.core.channels import ChannelRegistry
 from rtt_gui4graph.core.link_base import LINKS, LinkState, create_link
-from rtt_gui4graph.core.links import JLinkRttLink, MockLink  # noqa: F401
+from rtt_gui4graph.core.links import JLinkRttLink  # noqa: F401
 from rtt_gui4graph.core.parsers.kv_line import KvLineParser
 from rtt_gui4graph.core.reader import BatchQueue, ReaderWorker
 from rtt_gui4graph.core.records import Event, LogLine, ParseIssue, Sample
@@ -26,7 +26,7 @@ from rtt_gui4graph.ui.send_panel import SendPanel
 class MainWindow(QMainWindow):
     MAX_RECORDS_PER_TICK = 20_000
 
-    def __init__(self, auto_mock: bool = False) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("RTT GUI4GRAPH")
         self.resize(1280, 820)
@@ -55,10 +55,6 @@ class MainWindow(QMainWindow):
         self._timer.setInterval(33)
         self._timer.timeout.connect(self._drain_records)
         self._timer.start()
-
-        if auto_mock:
-            self._transport.setCurrentText("mock")
-            QTimer.singleShot(0, lambda: self.connect_link(prompt=False))
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Connection")

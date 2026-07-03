@@ -27,7 +27,7 @@
 │  MarkerStore ─ Recorder(.rttcap 录制/回放/导出)                │
 ├──────────────────────────────────────────────────────────────┤
 │ 连接层 (core.links, 可插拔)                                    │
-│  LinkBase 接口 ← JLinkRttLink / MockLink / (Serial/Tcp 预留)   │
+│  LinkBase 接口 ← JLinkRttLink / (Serial/Tcp 预留)              │
 ├──────────────────────────────────────────────────────────────┤
 │ 配置层 (config)                                                │
 │  QSettings(窗口/最近会话) ─ 会话预设 JSON ─ commands.json       │
@@ -64,7 +64,7 @@ class ParserBase:
 #   ParseIssue(t, severity, key, reason, sample)  解析异常上报（见 §5.3）
 ```
 
-- **注册表 + 工厂**：`LINKS = {"jlink-rtt": ..., "mock": ...}`、`PARSERS = {"kv-line": ...}`；
+- **注册表 + 工厂**：`LINKS = {"jlink-rtt": ...}`、`PARSERS = {"kv-line": ...}`；
   连接对话框的下拉框由注册表驱动，新增实现 = 加一个类 + 注册一行。
 - **插件目录**：启动扫描 `plugins/*.py`，其中的 LinkBase/ParserBase 子类自动注册；
   私有二进制协议写一个解析器文件丢进去即可，不改主程序。
@@ -223,13 +223,12 @@ ENUM    + 数值 token → 合法：数字就是一个枚举标签（如 state=1
 
 ```
 rtt_gui4graph/
-  app.py                    # 入口：QApplication + MainWindow（--mock 启动模拟源）
+  app.py                    # 入口：QApplication + MainWindow
   core/
     link_base.py            # LinkBase 接口 + LinkState + 注册表
     parser_base.py          # ParserBase 接口 + Sample/Event/LogLine + 注册表
     links/
       jlink_rtt.py          # pylink 封装：控制块搜索、读循环、写队列、重连
-      mock.py               # 按样例格式生成模拟数据（无硬件开发/演示）
     line_assembler.py       # 字节流→行：终端转义、半行、\r\n、非UTF8容错
     parsers/
       kv_line.py            # 默认 key=value 解析器
@@ -260,7 +259,7 @@ rtt_gui4graph/
 
 | 阶段 | 内容 | 可验证结果 |
 |------|------|-----------|
-| M1 | 接口/注册表 + JLinkRttLink + MockLink + 日志 + 原始发送 | 连上设备(或 mock)见滚动日志、能发命令 |
+| M1 | 接口/注册表 + JLinkRttLink + 日志 + 原始发送 | 连上真实设备后见滚动日志、能发命令 |
 | M2 | 解析管道 + 通道发现 + 手动确认 + 实时绘图 | 样例数据发现通道，勾选出曲线 |
 | M3 | 通道模型编辑器 + 枚举泳道 + 绘图交互 | 通道属性 UI 可编辑 |
 | M4 | 打标 + .rttcap 保存/回放 | 打标、保存、离线浏览 |
@@ -269,7 +268,6 @@ rtt_gui4graph/
 
 ## 12. 验证方式
 
-1. **无硬件**：`python app.py --mock`，MockLink 以 100Hz 生成样例格式行（数值抖动+状态跳变），验证全链路。
-2. **真机**：J-Link + 目标板，验证控制块搜索、上行绘图、下行命令。
-3. **单测**：pytest 覆盖 §5.1 全部判定分支（半行、终端转义、非UTF8、负数/浮点/科学计数/0x十六进制、
+1. **真机**：J-Link + 目标板，验证控制块搜索、上行绘图、下行命令。
+2. **单测**：pytest 覆盖 §5.1 全部判定分支（半行、终端转义、非UTF8、负数/浮点/科学计数/0x十六进制、
    nan/inf、空值、重复 key、类型冲突与改判建议、枚举基数护栏、纯文本行）以及队列溢出计数。
