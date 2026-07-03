@@ -17,7 +17,7 @@ class JLinkRttLink(LinkBase):
         return [
             Field("serial_no", "Serial No.", "str", ""),
             Field("device", "Device", "str", "Cortex-M", True),
-            Field("interface", "Interface", "choice", "SWD", True),
+            Field("interface", "Interface", "choice", "SWD", True, ("SWD", "JTAG")),
             Field("speed_khz", "Speed (kHz)", "int", 4000, True),
             Field("up_buffer", "RTT Up Buffer", "int", 0, True),
             Field("down_buffer", "RTT Down Buffer", "int", 0, True),

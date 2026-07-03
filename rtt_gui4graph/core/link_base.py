@@ -36,6 +36,7 @@ class Field:
     field_type: str
     default: Any = None
     required: bool = False
+    choices: tuple[Any, ...] = ()
 
 
 LINKS: dict[str, type["LinkBase"]] = {}

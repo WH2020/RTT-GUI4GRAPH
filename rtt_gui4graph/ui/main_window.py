@@ -17,6 +17,7 @@ from rtt_gui4graph.core.parsers.kv_line import KvLineParser
 from rtt_gui4graph.core.reader import BatchQueue, ReaderWorker
 from rtt_gui4graph.core.records import Event, LogLine, ParseIssue, Sample
 from rtt_gui4graph.ui.channel_panel import ChannelPanel
+from rtt_gui4graph.ui.connect_dialog import ConnectDialog, default_config_from_fields
 from rtt_gui4graph.ui.log_view import LogView
 from rtt_gui4graph.ui.plot_widget import PlotWidget
 from rtt_gui4graph.ui.send_panel import SendPanel
@@ -34,6 +35,7 @@ class MainWindow(QMainWindow):
         self._batches = BatchQueue()
         self._thread: QThread | None = None
         self._worker: ReaderWorker | None = None
+        self._last_configs: dict[str, dict] = {}
 
         self._plot = PlotWidget()
         self._channels = ChannelPanel()
@@ -56,7 +58,7 @@ class MainWindow(QMainWindow):
 
         if auto_mock:
             self._transport.setCurrentText("mock")
-            QTimer.singleShot(0, self.connect_link)
+            QTimer.singleShot(0, lambda: self.connect_link(prompt=False))
 
     def _build_toolbar(self) -> None:
         toolbar = QToolBar("Connection")
@@ -69,7 +71,7 @@ class MainWindow(QMainWindow):
         self._connect = QPushButton("Connect")
         self._disconnect = QPushButton("Disconnect")
         self._disconnect.setEnabled(False)
-        self._connect.clicked.connect(self.connect_link)
+        self._connect.clicked.connect(lambda: self.connect_link(prompt=True))
         self._disconnect.clicked.connect(self.disconnect_link)
 
         toolbar.addWidget(self._transport)
@@ -93,12 +95,20 @@ class MainWindow(QMainWindow):
         send_dock.setWidget(self._send_panel)
         self.addDockWidget(QtDock.Bottom, send_dock)
 
-    def connect_link(self) -> None:
+    def connect_link(self, prompt: bool = True) -> None:
         if self._worker is not None:
             return
         name = self._transport.currentText()
+        link_cls = LINKS[name]
+        fields = link_cls.config_fields()
+        config = self._last_configs.get(name) or default_config_from_fields(fields)
+        if prompt:
+            dialog = ConnectDialog(name, fields, config, self)
+            if dialog.exec() != ConnectDialog.Accepted:
+                return
+            config = dialog.config()
+            self._last_configs[name] = config
         link = create_link(name)
-        config = {"rate_hz": 100} if name == "mock" else {}
         self._registry = ChannelRegistry()
         self._batches = BatchQueue()
         self._thread = QThread(self)
