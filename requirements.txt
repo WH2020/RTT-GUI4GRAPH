@@ -1,0 +1,5 @@
+numpy>=1.24
+PySide6>=6.6
+pyqtgraph>=0.13
+pytest>=8.0
+pylink-square>=1.2
