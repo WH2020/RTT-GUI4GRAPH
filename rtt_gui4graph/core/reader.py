@@ -64,6 +64,7 @@ class ReaderWorker(QObject):
     state_changed = Signal(object, str)
     metrics_changed = Signal(dict)
     send_failed = Signal(str)
+    finished = Signal()
 
     def __init__(
         self,
@@ -121,8 +122,12 @@ class ReaderWorker(QObject):
         except Exception as exc:
             self.state_changed.emit(LinkState.ERROR, str(exc))
         finally:
-            self._link.close()
+            try:
+                self._link.close()
+            except Exception as exc:
+                self.state_changed.emit(LinkState.ERROR, f"close failed: {exc}")
             self.state_changed.emit(LinkState.CLOSED, "closed")
+            self.finished.emit()
 
     @Slot()
     def stop(self) -> None:

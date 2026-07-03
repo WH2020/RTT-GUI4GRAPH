@@ -118,16 +118,27 @@ class MainWindow(QMainWindow):
         self._worker.state_changed.connect(self._on_state_changed)
         self._worker.metrics_changed.connect(self._on_metrics_changed)
         self._worker.send_failed.connect(self._send_panel.set_status)
+        self._worker.finished.connect(self._thread.quit)
+        self._thread.finished.connect(self._on_reader_thread_finished)
         self._thread.start()
         self._connect.setEnabled(False)
         self._disconnect.setEnabled(True)
 
     def disconnect_link(self) -> None:
-        if self._worker is not None:
-            self._worker.stop()
-        if self._thread is not None:
-            self._thread.quit()
-            self._thread.wait(1500)
+        worker = self._worker
+        thread = self._thread
+        if worker is not None:
+            worker.stop()
+        if thread is not None:
+            thread.quit()
+            thread.wait(1500)
+        if self._thread is thread:
+            self._clear_reader_state()
+
+    def _on_reader_thread_finished(self) -> None:
+        self._clear_reader_state()
+
+    def _clear_reader_state(self) -> None:
         self._worker = None
         self._thread = None
         self._connect.setEnabled(True)
