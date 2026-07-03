@@ -26,6 +26,31 @@ class MarkerPanelTest(unittest.TestCase):
         self.assertTrue(panel.remove_marker(marker.id))
         self.assertEqual(panel._list.count(), 0)
 
+    def test_added_marker_is_selected_and_selected_delete_emits_change(self):
+        store = MarkerStore()
+        panel = MarkerPanel()
+        panel.refresh(store)
+        changes = []
+        panel.markers_changed.connect(lambda: changes.append(True))
+
+        marker = panel.add_marker(2.5, "custom", "offline")
+
+        self.assertEqual(panel._list.currentRow(), 0)
+        self.assertTrue(panel.remove_selected_marker())
+        self.assertEqual(store.markers(), [])
+        self.assertTrue(changes)
+
+    def test_marker_can_be_renamed_with_custom_note(self):
+        store = MarkerStore()
+        panel = MarkerPanel()
+        panel.refresh(store)
+        marker = panel.add_marker(1.0, "old", "old note")
+
+        self.assertTrue(panel.edit_marker(marker.id, "new label", "new note"))
+
+        self.assertEqual(store.markers()[0].name, "new label")
+        self.assertEqual(store.markers()[0].note, "new note")
+
 
 if __name__ == "__main__":
     unittest.main()

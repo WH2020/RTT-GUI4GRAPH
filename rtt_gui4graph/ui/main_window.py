@@ -25,7 +25,7 @@ from rtt_gui4graph.ui.channel_model_editor import ChannelModelEditor
 from rtt_gui4graph.ui.channel_panel import ChannelPanel
 from rtt_gui4graph.ui.connect_dialog import ConnectDialog, default_config_from_fields
 from rtt_gui4graph.ui.log_view import LogView
-from rtt_gui4graph.ui.marker_panel import MarkerPanel
+from rtt_gui4graph.ui.marker_panel import MarkerDialog, MarkerPanel
 from rtt_gui4graph.ui.plot_widget import PlotWidget
 from rtt_gui4graph.ui.send_panel import SendPanel
 
@@ -61,6 +61,7 @@ class MainWindow(QMainWindow):
         self._build_docks()
 
         self._channels.channel_enabled_changed.connect(self._set_channel_enabled)
+        self._marker_panel.markers_changed.connect(self._on_markers_changed)
         self._send_panel.send_requested.connect(self._send_bytes)
 
         self._timer = QTimer(self)
@@ -87,7 +88,7 @@ class MainWindow(QMainWindow):
         self._disconnect.setEnabled(False)
         self._connect.clicked.connect(lambda: self.connect_link(prompt=True))
         self._disconnect.clicked.connect(self.disconnect_link)
-        self._mark.clicked.connect(self.add_marker)
+        self._mark.clicked.connect(lambda: self.add_marker(prompt=True))
         self._save_capture.clicked.connect(self.save_capture)
         self._open_capture.clicked.connect(self.open_capture)
         self._export_csv.clicked.connect(self.export_csv)
@@ -210,13 +211,29 @@ class MainWindow(QMainWindow):
         self._channel_editor.refresh(self._registry)
         self._plot.refresh(self._registry)
 
-    def add_marker(self) -> None:
+    def add_marker(
+        self,
+        name: str | None = None,
+        note: str = "",
+        prompt: bool = False,
+    ):
         t = max(
-            (channel.latest_time for channel in self._registry.channels() if channel.latest_time is not None),
+            (
+                channel.latest_time
+                for channel in self._registry.channels()
+                if channel.latest_time is not None
+            ),
             default=0.0,
         )
-        self._markers.add(t, f"marker {len(self._markers.markers()) + 1}", "")
-        self._marker_panel.refresh(self._markers)
+        default_name = name or f"marker {len(self._markers.markers()) + 1}"
+        if prompt:
+            dialog = MarkerDialog(self, default_name, note)
+            if dialog.exec() != MarkerDialog.Accepted:
+                return None
+            default_name, note = dialog.marker_text()
+        return self._marker_panel.add_marker(t, default_name, note)
+
+    def _on_markers_changed(self) -> None:
         self._plot.refresh(self._registry)
 
     def save_capture(self) -> None:
