@@ -46,22 +46,38 @@ class LogView(QWidget):
         layout.addWidget(self._tabs)
 
     def append_log(self, record: LogLine) -> None:
-        self._append_text(
+        self.append_logs([record])
+
+    def append_logs(self, records: list[LogLine]) -> None:
+        self._append_lines(
             self._logs,
-            f"{record.t:10.3f} T{record.terminal}: {record.text}",
+            [
+                f"{record.t:10.3f} T{record.terminal}: {record.text}"
+                for record in records
+            ],
         )
 
     def append_issue(self, issue: ParseIssue) -> None:
-        key = issue.key or "-"
-        self._append_text(
+        self.append_issues([issue])
+
+    def append_issues(self, issues: list[ParseIssue]) -> None:
+        self._append_lines(
             self._issues,
-            f"{issue.t:10.3f} {issue.severity} {issue.reason} {key}: {issue.sample_text}",
+            [
+                f"{issue.t:10.3f} {issue.severity} {issue.reason} {issue.key or '-'}: {issue.sample_text}"
+                for issue in issues
+            ],
         )
 
     def _append_text(self, editor: QPlainTextEdit, text: str) -> None:
+        self._append_lines(editor, [text])
+
+    def _append_lines(self, editor: QPlainTextEdit, lines: list[str]) -> None:
+        if not lines:
+            return
         scrollbar = editor.verticalScrollBar()
         previous_value = scrollbar.value()
-        editor.appendPlainText(text)
+        editor.appendPlainText("\n".join(lines))
         if self._auto_scroll.isChecked():
             editor.moveCursor(QTextCursor.End)
             scrollbar.setValue(scrollbar.maximum())

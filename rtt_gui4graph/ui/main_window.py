@@ -148,13 +148,17 @@ class MainWindow(QMainWindow):
         records = self._batches.drain(self.MAX_RECORDS_PER_TICK)
         if not records:
             return
+        logs: list[LogLine] = []
+        issues: list[ParseIssue] = []
         for record in records:
             if isinstance(record, LogLine):
-                self._logs.append_log(record)
+                logs.append(record)
             elif isinstance(record, ParseIssue):
-                self._logs.append_issue(record)
+                issues.append(record)
             elif isinstance(record, (Sample, Event)):
                 self._registry.ingest(record)
+        self._logs.append_logs(logs)
+        self._logs.append_issues(issues)
         self._channels.refresh(self._registry)
         self._plot.refresh(self._registry)
 

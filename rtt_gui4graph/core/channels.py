@@ -20,6 +20,7 @@ class Channel:
     capacity: int
     enabled: bool = False
     latest_value: float | str | None = None
+    latest_time: float | None = None
     _times: np.ndarray = field(init=False, repr=False)
     _values: np.ndarray = field(init=False, repr=False)
     _start: int = field(default=0, init=False, repr=False)
@@ -39,12 +40,33 @@ class Channel:
         self._times[index] = t
         self._values[index] = value
         self.latest_value = latest_value
+        self.latest_time = t
 
     def series(self) -> tuple[list[float], list[float]]:
+        times, values = self.series_arrays()
+        return times.tolist(), values.tolist()
+
+    def series_arrays(
+        self,
+        start_time: float | None = None,
+        max_points: int | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         if self._count == 0:
-            return [], []
+            return np.empty(0, dtype=float), np.empty(0, dtype=float)
         indexes = (self._start + np.arange(self._count)) % self.capacity
-        return self._times[indexes].tolist(), self._values[indexes].tolist()
+        if start_time is not None:
+            times = self._times[indexes]
+            first = int(np.searchsorted(times, start_time, side="left"))
+            indexes = indexes[first:]
+        if max_points is not None and len(indexes) > max_points:
+            indexes = indexes[-max_points:]
+        return self._times[indexes].copy(), self._values[indexes].copy()
+
+    @property
+    def earliest_time(self) -> float | None:
+        if self._count == 0:
+            return None
+        return float(self._times[self._start])
 
 
 class ChannelRegistry:

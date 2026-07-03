@@ -34,6 +34,21 @@ class ChannelRegistryTest(unittest.TestCase):
         self.assertEqual(channel.latest_value, "STOP")
         self.assertEqual(channel.series(), ([1.0, 2.0], [0.0, 1.0]))
 
+    def test_series_arrays_can_return_recent_window_and_tail_limit(self):
+        registry = ChannelRegistry(capacity=10)
+        for i in range(8):
+            registry.ingest(
+                Sample(channel="TAP.x", t=float(i), value=float(i * 10), raw_text="")
+            )
+
+        times, values = registry.channel("TAP.x").series_arrays(
+            start_time=3.0,
+            max_points=3,
+        )
+
+        self.assertEqual(times.tolist(), [5.0, 6.0, 7.0])
+        self.assertEqual(values.tolist(), [50.0, 60.0, 70.0])
+
 
 if __name__ == "__main__":
     unittest.main()

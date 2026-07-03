@@ -68,6 +68,44 @@ class LogViewTest(unittest.TestCase):
 
         self.assertEqual(scrollbar.value(), scrollbar.maximum())
 
+    def test_append_logs_accepts_batches(self):
+        view = LogView()
+        view.append_logs(
+            [
+                LogLine(terminal=0, t=1.0, text="line one"),
+                LogLine(terminal=1, t=2.0, text="line two"),
+            ]
+        )
+
+        text = view._logs.toPlainText()
+        self.assertIn("T0: line one", text)
+        self.assertIn("T1: line two", text)
+
+    def test_append_issues_accepts_batches(self):
+        view = LogView()
+        view.append_issues(
+            [
+                ParseIssue(
+                    t=1.0,
+                    severity="warning",
+                    key="TAP.x",
+                    reason="TYPE_CONFLICT",
+                    sample_text="TAP x=RUN",
+                ),
+                ParseIssue(
+                    t=2.0,
+                    severity="warning",
+                    key="TAP.y",
+                    reason="EMPTY_VALUE",
+                    sample_text="TAP y=",
+                ),
+            ]
+        )
+
+        text = view._issues.toPlainText()
+        self.assertIn("TYPE_CONFLICT TAP.x", text)
+        self.assertIn("EMPTY_VALUE TAP.y", text)
+
 
 if __name__ == "__main__":
     unittest.main()
