@@ -18,6 +18,14 @@ class LineAssemblerTest(unittest.TestCase):
         self.assertEqual(lines[0].terminal, 1)
         self.assertEqual(lines[0].text, "TAP x=1")
 
+    def test_strips_ascii_rtt_terminal_escape(self):
+        assembler = LineAssembler(clock=lambda: 2.0)
+        lines = assembler.feed(b"\xff0\xff1TAP x=1\n")
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0].terminal, 1)
+        self.assertEqual(lines[0].text, "TAP x=1")
+        self.assertFalse(lines[0].decode_error)
+
     def test_decode_error_replaces_bytes_and_marks_line(self):
         assembler = LineAssembler(clock=lambda: 3.0)
         lines = assembler.feed(b"bad=\xff\n")

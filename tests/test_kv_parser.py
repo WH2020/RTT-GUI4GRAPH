@@ -72,6 +72,13 @@ class KvLineParserTest(unittest.TestCase):
             any(isinstance(r, ParseIssue) and r.reason == "DECODE_ERROR" for r in records)
         )
 
+    def test_rtt_terminal_noise_before_prefix_is_ignored(self):
+        records = parse("\ufffd0\ufffd1TAP RTT wr_dps=10 wy_dps=-2")
+        samples = {r.channel: r.value for r in records if isinstance(r, Sample)}
+        self.assertEqual(samples["TAP.wr_dps"], 10.0)
+        self.assertEqual(samples["TAP.wy_dps"], -2.0)
+        self.assertFalse(any("\ufffd" in r.channel for r in records if hasattr(r, "channel")))
+
     def test_enum_overflow_reports_issue_and_stops_events(self):
         parser = KvLineParser(enum_limit=2)
         parser.parse_line(RawLine(t=1.0, terminal=0, text="TAP state=A"))

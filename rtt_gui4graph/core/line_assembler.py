@@ -23,8 +23,9 @@ class LineAssembler:
                 continue
             if self._pending_terminal_escape:
                 self._pending_terminal_escape = False
-                if byte <= 0x0F and byte not in (0x0A, 0x0D):
-                    self._terminal = byte
+                terminal = self._terminal_escape_value(byte)
+                if terminal is not None:
+                    self._terminal = terminal
                     continue
                 self._buffer.append(0xFF)
             if byte == 0x0A:
@@ -53,3 +54,15 @@ class LineAssembler:
             text=text,
             decode_error="\ufffd" in text,
         )
+
+    @staticmethod
+    def _terminal_escape_value(byte: int) -> int | None:
+        if byte <= 0x0F and byte not in (0x0A, 0x0D):
+            return byte
+        if ord("0") <= byte <= ord("9"):
+            return byte - ord("0")
+        if ord("A") <= byte <= ord("F"):
+            return byte - ord("A") + 10
+        if ord("a") <= byte <= ord("f"):
+            return byte - ord("a") + 10
+        return None

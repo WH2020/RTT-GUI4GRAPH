@@ -7,6 +7,7 @@ from ..parser_base import ParserBase, ParserRecord, register_parser
 from ..records import Event, LogLine, ParseIssue, RawLine, Sample
 
 KV_RE = re.compile(r"(?P<key>\w+)=(?P<value>\S*)")
+PREFIX_RE = re.compile(r"[A-Za-z_]\w*")
 INT_RE = re.compile(r"^[+-]?\d+$")
 FLOAT_RE = re.compile(
     r"^[+-]?(?:(?:\d+\.\d*)|(?:\.\d+)|(?:\d+))(?:[eE][+-]?\d+)$|^[+-]?(?:\d+\.\d*|\.\d+)$"
@@ -114,10 +115,10 @@ class KvLineParser(ParserBase):
 
     @staticmethod
     def _prefix(text: str, first_kv_start: int) -> str:
-        head = text[:first_kv_start].strip()
-        if not head:
+        match = PREFIX_RE.search(text[:first_kv_start])
+        if match is None:
             return "root"
-        return head.split()[0]
+        return match.group(0)
 
     @staticmethod
     def _channel(prefix: str, key: str) -> str:

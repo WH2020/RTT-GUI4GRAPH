@@ -21,16 +21,27 @@ class PlotWidget(QWidget):
         layout.addWidget(self._plot)
 
     def refresh(self, registry: ChannelRegistry) -> None:
-        enabled = {channel.key for channel in registry.enabled_channels()}
+        enabled_channels = registry.enabled_channels()
+        series_by_key = {}
+        base_time: float | None = None
+        for channel in enabled_channels:
+            times, values = channel.series()
+            series_by_key[channel.key] = (times, values)
+            if times:
+                base_time = times[0] if base_time is None else min(base_time, times[0])
+
+        enabled = {channel.key for channel in enabled_channels}
         for key in list(self._curves):
             if key not in enabled:
                 self._plot.removeItem(self._curves.pop(key))
 
-        for index, channel in enumerate(registry.enabled_channels()):
-            times, values = channel.series()
+        for index, channel in enumerate(enabled_channels):
+            times, values = series_by_key[channel.key]
             curve = self._curves.get(channel.key)
             if curve is None:
                 pen = pg.mkPen(pg.intColor(index, hues=12), width=1.5)
                 curve = self._plot.plot(name=channel.key, pen=pen)
                 self._curves[channel.key] = curve
+            if base_time is not None:
+                times = [t - base_time for t in times]
             curve.setData(times, values)
