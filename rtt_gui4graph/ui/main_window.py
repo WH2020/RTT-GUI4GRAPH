@@ -12,13 +12,17 @@ from PySide6.QtWidgets import (
 )
 
 from rtt_gui4graph.core.channels import ChannelRegistry
-from rtt_gui4graph.core.csv_export import export_channels_csv
 from rtt_gui4graph.core.link_base import LINKS, LinkState, create_link
 from rtt_gui4graph.core.links import JLinkRttLink  # noqa: F401
 from rtt_gui4graph.core.markers import MarkerStore
 from rtt_gui4graph.core.parsers.kv_line import KvLineParser
 from rtt_gui4graph.core.reader import BatchQueue, ReaderWorker
-from rtt_gui4graph.core.recorder import load_rttcap, save_rttcap
+from rtt_gui4graph.core.recorder import (
+    RecordingSession,
+    infer_recording_format,
+    load_rttcap,
+    save_recording,
+)
 from rtt_gui4graph.core.records import Event, LogLine, ParseIssue, Sample
 from rtt_gui4graph.core.session import SessionPreset, SessionStore
 from rtt_gui4graph.ui.channel_model_editor import ChannelModelEditor
@@ -44,6 +48,8 @@ class MainWindow(QMainWindow):
         self._worker: ReaderWorker | None = None
         self._last_configs: dict[str, dict] = {}
         self._markers = MarkerStore()
+        self._recording = RecordingSession()
+        self._file_dialog = QFileDialog
 
         self._plot = PlotWidget()
         self._plot.set_markers(self._markers)
@@ -80,18 +86,22 @@ class MainWindow(QMainWindow):
         self._connect = QPushButton("Connect")
         self._disconnect = QPushButton("Disconnect")
         self._mark = QPushButton("Mark")
-        self._save_capture = QPushButton("Save Cap")
+        self._start_record = QPushButton("Start Record")
+        self._stop_record = QPushButton("Stop Record")
+        self._save_record = QPushButton("Save Record")
         self._open_capture = QPushButton("Open Cap")
-        self._export_csv = QPushButton("CSV")
         self._save_session = QPushButton("Save Session")
         self._load_session = QPushButton("Load Session")
         self._disconnect.setEnabled(False)
+        self._stop_record.setEnabled(False)
+        self._save_record.setEnabled(False)
         self._connect.clicked.connect(lambda: self.connect_link(prompt=True))
         self._disconnect.clicked.connect(self.disconnect_link)
         self._mark.clicked.connect(lambda: self.add_marker(prompt=True))
-        self._save_capture.clicked.connect(self.save_capture)
+        self._start_record.clicked.connect(self.start_recording)
+        self._stop_record.clicked.connect(self.stop_recording)
+        self._save_record.clicked.connect(self.save_recording)
         self._open_capture.clicked.connect(self.open_capture)
-        self._export_csv.clicked.connect(self.export_csv)
         self._save_session.clicked.connect(self.save_session)
         self._load_session.clicked.connect(self.load_session)
 
@@ -100,9 +110,10 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self._disconnect)
         toolbar.addSeparator()
         toolbar.addWidget(self._mark)
-        toolbar.addWidget(self._save_capture)
+        toolbar.addWidget(self._start_record)
+        toolbar.addWidget(self._stop_record)
+        toolbar.addWidget(self._save_record)
         toolbar.addWidget(self._open_capture)
-        toolbar.addWidget(self._export_csv)
         toolbar.addWidget(self._save_session)
         toolbar.addWidget(self._load_session)
         toolbar.addSeparator()
@@ -202,6 +213,7 @@ class MainWindow(QMainWindow):
                 self._registry.ingest(record)
         self._logs.append_logs(logs)
         self._logs.append_issues(issues)
+        self._recording.ingest(records)
         self._channels.refresh(self._registry)
         self._channel_editor.refresh(self._registry)
         self._plot.refresh(self._registry)
@@ -236,26 +248,51 @@ class MainWindow(QMainWindow):
     def _on_markers_changed(self) -> None:
         self._plot.refresh(self._registry)
 
-    def save_capture(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
+    def start_recording(self) -> None:
+        self._recording.start(
+            {
+                "transport": self._transport.currentText(),
+                "link_configs": self._last_configs,
+            }
+        )
+        self._start_record.setEnabled(False)
+        self._stop_record.setEnabled(True)
+        self._save_record.setEnabled(False)
+        self._status.setText("recording: started")
+
+    def stop_recording(self) -> None:
+        self._recording.stop()
+        self._start_record.setEnabled(True)
+        self._stop_record.setEnabled(False)
+        self._save_record.setEnabled(self._recording.has_data())
+        self._status.setText("recording: stopped")
+
+    def save_recording(self) -> None:
+        if self._recording.is_recording:
+            self.stop_recording()
+        if not self._recording.has_data():
+            self._status.setText("recording: no data")
+            return
+        path, selected_filter = self._file_dialog.getSaveFileName(
             self,
-            "Save Capture",
-            "capture.rttcap",
-            "RTT Capture (*.rttcap)",
+            "Save Recording",
+            "record.rttcap",
+            "RTT Capture (*.rttcap);;CSV (*.csv);;JSON (*.json)",
         )
         if not path:
             return
-        save_rttcap(
+        file_format = infer_recording_format(path, selected_filter)
+        path = self._path_with_recording_suffix(path, file_format)
+        save_recording(
             path,
-            self._registry,
+            self._recording,
             self._markers,
-            {"transport": self._transport.currentText()},
-            self._logs._logs.toPlainText(),
+            file_format,
         )
-        self._status.setText(f"saved: {path}")
+        self._status.setText(f"recording saved: {path}")
 
     def open_capture(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        path, _ = self._file_dialog.getOpenFileName(
             self,
             "Open Capture",
             "",
@@ -273,20 +310,8 @@ class MainWindow(QMainWindow):
         self._plot.refresh(self._registry)
         self._status.setText(f"opened: {path}")
 
-    def export_csv(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export CSV",
-            "channels.csv",
-            "CSV (*.csv)",
-        )
-        if not path:
-            return
-        export_channels_csv(path, self._registry)
-        self._status.setText(f"csv: {path}")
-
     def save_session(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(
+        path, _ = self._file_dialog.getSaveFileName(
             self,
             "Save Session",
             "session.json",
@@ -304,7 +329,7 @@ class MainWindow(QMainWindow):
         self._status.setText(f"session saved: {path}")
 
     def load_session(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
+        path, _ = self._file_dialog.getOpenFileName(
             self,
             "Load Session",
             "",
@@ -322,6 +347,13 @@ class MainWindow(QMainWindow):
         self._channel_editor.refresh(self._registry)
         self._plot.refresh(self._registry)
         self._status.setText(f"session loaded: {path}")
+
+    @staticmethod
+    def _path_with_recording_suffix(path: str, file_format: str) -> str:
+        suffix = {"rttcap": ".rttcap", "csv": ".csv", "json": ".json"}[file_format]
+        if path.lower().endswith(suffix):
+            return path
+        return path + suffix
 
     def _send_bytes(self, data: bytes) -> None:
         if self._worker is None:

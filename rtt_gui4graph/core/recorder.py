@@ -9,7 +9,9 @@ from pathlib import Path
 import numpy as np
 
 from .channels import ChannelKind, ChannelRegistry
+from .csv_export import export_channels_csv
 from .markers import MarkerStore
+from .records import Event, LogLine, ParseIssue, Sample
 
 
 @dataclass
@@ -18,6 +20,67 @@ class ReplaySession:
     markers: MarkerStore
     meta: dict
     raw_log: str = ""
+
+
+class RecordingSession:
+    def __init__(self, capacity: int = 100_000) -> None:
+        self._capacity = capacity
+        self._registry = ChannelRegistry(capacity=capacity)
+        self._raw_lines: list[str] = []
+        self._meta: dict = {}
+        self._is_recording = False
+        self._is_stopped = False
+
+    @property
+    def is_recording(self) -> bool:
+        return self._is_recording
+
+    @property
+    def is_stopped(self) -> bool:
+        return self._is_stopped
+
+    @property
+    def registry(self) -> ChannelRegistry:
+        return self._registry
+
+    @property
+    def meta(self) -> dict:
+        return dict(self._meta)
+
+    @property
+    def raw_log(self) -> str:
+        return "\n".join(self._raw_lines)
+
+    def start(self, meta: dict | None = None) -> None:
+        self._registry = ChannelRegistry(capacity=self._capacity)
+        self._raw_lines = []
+        self._meta = dict(meta or {})
+        self._is_recording = True
+        self._is_stopped = False
+
+    def stop(self) -> None:
+        if self._is_recording:
+            self._is_recording = False
+            self._is_stopped = True
+
+    def ingest(self, records: list[Sample | Event | LogLine | ParseIssue]) -> None:
+        if not self._is_recording:
+            return
+        for record in records:
+            if isinstance(record, (Sample, Event)):
+                self._registry.ingest(record)
+            elif isinstance(record, LogLine):
+                self._raw_lines.append(
+                    f"{record.t:10.3f} T{record.terminal}: {record.text}"
+                )
+            elif isinstance(record, ParseIssue):
+                self._raw_lines.append(
+                    f"{record.t:10.3f} {record.severity} {record.reason} "
+                    f"{record.key or '-'}: {record.sample_text}"
+                )
+
+    def has_data(self) -> bool:
+        return bool(self._registry.channels() or self._raw_lines)
 
 
 def save_rttcap(
@@ -70,3 +133,58 @@ def load_rttcap(path: str | Path) -> ReplaySession:
         meta=dict(payload.get("meta", {})),
         raw_log=raw_log,
     )
+
+
+def infer_recording_format(path: str | Path, selected_filter: str = "") -> str:
+    suffix = Path(path).suffix.lower()
+    if suffix == ".csv" or "CSV" in selected_filter:
+        return "csv"
+    if suffix == ".json" or "JSON" in selected_filter:
+        return "json"
+    return "rttcap"
+
+
+def save_recording(
+    path: str | Path,
+    session: RecordingSession,
+    markers: MarkerStore,
+    file_format: str,
+) -> None:
+    file_format = file_format.lower()
+    if file_format == "rttcap":
+        save_rttcap(path, session.registry, markers, session.meta, session.raw_log)
+        return
+    if file_format == "csv":
+        export_channels_csv(path, session.registry)
+        return
+    if file_format == "json":
+        save_recording_json(path, session, markers)
+        return
+    raise ValueError(f"unsupported recording format: {file_format}")
+
+
+def save_recording_json(
+    path: str | Path,
+    session: RecordingSession,
+    markers: MarkerStore,
+) -> None:
+    channels = []
+    for channel in session.registry.channels():
+        times, values = channel.series_arrays()
+        channels.append(
+            {
+                "key": channel.key,
+                "kind": channel.kind.value,
+                "config": channel.to_config(),
+                "times": times.tolist(),
+                "values": values.tolist(),
+            }
+        )
+    data = {
+        "version": 1,
+        "meta": session.meta,
+        "channels": channels,
+        "markers": markers.to_json(),
+        "raw_log": session.raw_log,
+    }
+    Path(path).write_text(json.dumps(data, ensure_ascii=False, indent=2), "utf-8")
